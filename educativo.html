@@ -25,7 +25,10 @@
 <fieldset><legend>Práctica de carga</legend>
 <button id="align-light">Alinear con 1 t</button>
 <button id="align-heavy">Alinear con 2,5 t</button>
-<p><small>Alineá el forklift, avanzá para meter las horquillas y levantá la carga. Bajala al piso para soltarla.</small></p>
+<label for="rack-level">Destino en el rack</label>
+<select id="rack-level"><option value="0">Nivel 1</option><option value="1">Nivel 2</option></select>
+<button id="align-rack" disabled>Alinear con el rack</button>
+<p><small>Para recoger: avanzá con <strong>W</strong> hasta meter las horquillas y subí con <strong>Q</strong>. Para guardar: alineate con el rack, avanzá con <strong>W</strong> y bajá con <strong>E</strong> hasta que el pallet quede apoyado. Retirá las horquillas con <strong>S</strong>.</small></p>
 <p id="load-status" role="status">Elegí un pallet para comenzar.</p>
 <small>Simulación ilustrativa. El vuelco está programado para mostrar el riesgo de sobrecarga. La capacidad real depende de la placa de carga y de la configuración del equipo.</small>
 </fieldset>
@@ -294,6 +297,8 @@ for(const x of [-.23,.23]){
 }
 const rack=group('rack','Rack de almacenamiento','Los largueros soportan los pallets y descargan el peso en los marcos laterales.',scene);
 rack.position.set(-5.8,0,3.9);
+const shelfBeamHeights=[.43,1.29];
+const rackSlots=shelfBeamHeights.map(y=>({x:0,y:y+.056,z:rack.position.z}));
 for(const x of [-.64,.64]){
   for(const z of [-.36,.36]){
     box(rack,x,.91,z,.073,1.82,.073,'#335761');
@@ -302,7 +307,7 @@ for(const x of [-.64,.64]){
   }
   for(const y of [.22,.94,1.70])box(rack,x,y,0,.055,.06,.74,'#426774');
 }
-for(const y of [.43,1.29]){
+for(const y of shelfBeamHeights){
   for(const z of [-.36,.36])box(rack,0,y,z,1.26,.085,.065,'#cf713e');
   for(const x of [-.42,0,.42])box(rack,x,y+.042,0,.047,.028,.70,'#667971');
 }
@@ -334,6 +339,11 @@ return {pallet,x,id};
 }
 const loads=[makePallet('pallet-light','1 t',-1.55,'#9d744b',.42),makePallet('pallet-heavy','2,5 t',1.55,'#925044',.74)];
 let carried=null, fall=null;
+const alignRack=document.querySelector('#align-rack');
+const rackLevel=document.querySelector('#rack-level');
+function showLoadStatus(message){
+  if(loadStatus.textContent!==message)loadStatus.textContent=message;
+}
 const loadStatus=document.querySelector('#load-status');
 const view=document.querySelector('#view');
 let practice=false;
@@ -399,7 +409,7 @@ const axle=new THREE.Vector3(0,.27,-.59);
 const movedAxle=new THREE.Vector3();
 const fallBounds=new THREE.Box3();
 function resetLoads(){
-  carried=null;fall=null;
+  carried=null;fall=null;alignRack.disabled=true;
   warehouse.attach(loads[0].pallet);warehouse.attach(loads[1].pallet);
   for(const item of loads){
     item.pallet.position.set(item.x,0,-2.9);item.pallet.rotation.set(0,0,0);
@@ -408,8 +418,13 @@ function resetLoads(){
   loadStatus.textContent='Elegí un pallet para comenzar.';
 }
 function positionFor(item){
-  resetLoads();height=lean=heading=0;
-  truck.position.set(item.x,0,-.5);
+  if(fall){showLoadStatus('Reiniciá la simulación después del vuelco.');return;}
+  if(carried){showLoadStatus('Apoyá el pallet que estás llevando antes de buscar otro.');return;}
+  lean=0;
+  const {x,y,z}=item.pallet.position;
+  heading=item.pallet.rotation.y;
+  height=y;
+  truck.position.set(x+Math.sin(heading)*2.4,0,z+Math.cos(heading)*2.4);
   if(!practice)setView(true);
   select('');
   advance(0,new Set());
@@ -417,6 +432,15 @@ function positionFor(item){
 }
 document.querySelector('#align-light').onclick=()=>positionFor(loads[0]);
 document.querySelector('#align-heavy').onclick=()=>positionFor(loads[1]);
+alignRack.onclick=()=>{
+  if(!carried||fall)return;
+  const slot=rackSlots[Number(rackLevel.value)];
+  if(!practice)setView(true);
+  heading=Math.PI;lean=0;height=slot.y+.115;
+  truck.position.set(slot.x,0,slot.z-2.4);
+  advance(0,new Set());
+  showLoadStatus('Nivel listo. Avanzá hasta el fondo del rack y bajá el pallet con E.');
+};
 function advance(dt,actions){
   if(fall){
     if(fall.elapsed===1)return;
@@ -437,7 +461,26 @@ function advance(dt,actions){
   const xLimit=practice?6:1.1,zLimit=practice?4.85:1.1;
   truck.position.x=clamp(truck.position.x-Math.sin(heading)*distance,-xLimit,xLimit);
   truck.position.z=clamp(truck.position.z-Math.cos(heading)*distance,-zLimit,zLimit);
+  if(carried && practice && distance>0 && Math.abs(truck.position.x)<.18
+    && Math.cos(heading-Math.PI)>.98 && height>rackSlots[0].y-.04){
+    truck.position.z=Math.min(truck.position.z,rackSlots[0].z-1.4);
+  }
+  if(!carried && practice && distance>0){
+    for(const {pallet} of loads){
+      const angle=pallet.rotation.y;
+      const dx=truck.position.x-pallet.position.x,dz=truck.position.z-pallet.position.z;
+      const lateral=dx*Math.cos(angle)-dz*Math.sin(angle);
+      const gap=dx*Math.sin(angle)+dz*Math.cos(angle);
+      if(Math.cos(heading-angle)>.985 && Math.abs(lateral)<.20
+        && Math.abs(height-pallet.position.y)<.055 && gap>1.05 && gap<1.4){
+        const correction=1.4-gap;
+        truck.position.x+=Math.sin(angle)*correction;
+        truck.position.z+=Math.cos(angle)*correction;
+      }
+    }
+  }
   const previousHeight=height;
+  const lower=actions.has('lower')&&!actions.has('raise');
   lean=clamp(lean+axis('front','back')*dt*.33,-.16,.13);
   height=clamp(height+axis('raise','lower')*dt*.7,0,1.5);
   tilt.rotation.x=-lean;
@@ -456,12 +499,12 @@ function advance(dt,actions){
   const liftText='Elevación en la maqueta · '+Math.round(height/1.5*100)+' %';
   if(lift.textContent!==liftText)lift.textContent=liftText;
   if(!practice)return;
-  if(!carried && height>previousHeight && previousHeight<.06 && Math.abs(lean)<.055){
+  if(!carried && height>previousHeight && Math.abs(lean)<.055){
     truck.updateMatrixWorld(true);
     const match=loads.find(({pallet})=>{
       const local=truck.worldToLocal(pallet.getWorldPosition(new THREE.Vector3()));
       const relativeHeading=pallet.rotation.y-heading;
-      return Math.abs(local.x)<.22 && Math.abs(local.z+1.40)<.23 && Math.cos(relativeHeading)>.97;
+      return Math.abs(local.y-previousHeight)<.06 && Math.abs(local.x)<.22 && Math.abs(local.z+1.40)<.23 && Math.cos(relativeHeading)>.97;
     });
     if(match){
       carried=match;carriage.add(match.pallet);
@@ -469,13 +512,37 @@ function advance(dt,actions){
       if(match.id==='pallet-heavy'){
         fall={elapsed:0,pivot:axle.clone().applyEuler(truck.rotation).add(truck.position)};
         loadStatus.textContent='Vuelco simulado: 2,5 t superan las 1,5 t nominales. Reiniciá la práctica.';
-      }else loadStatus.textContent='Pallet de 1 t levantado en la simulación.';
-    }else if(!fall)loadStatus.textContent='Bajá las horquillas y alinealas con las entradas del pallet.';
+      }else {
+        alignRack.disabled=false;
+        showLoadStatus('Pallet de 1 t levantado. Elegí un nivel y alineate con el rack.');
+      }
+    }
   }
-  if(carried && !fall && height===0 && previousHeight>0){
-    warehouse.attach(carried.pallet);
-    carried.pallet.position.y=0;carried.pallet.rotation.set(0,heading,0);
-    carried=null;loadStatus.textContent='Pallet apoyado en el piso.';
+  if(carried && !fall && lower){
+    const world=carried.pallet.getWorldPosition(new THREE.Vector3());
+    const slot=rackSlots.find(slot=>Math.abs(world.x-slot.x)<.18
+      && Math.abs(world.z-slot.z)<.17 && Math.cos(heading-Math.PI)>.98
+      && Math.abs(lean)<.055 && world.y<=slot.y && previousHeight>=slot.y-.035);
+    if(slot || height===0){
+      warehouse.attach(carried.pallet);
+      if(slot){
+        carried.pallet.position.set(slot.x,slot.y,slot.z);
+        carried.pallet.rotation.set(0,Math.PI,0);
+        showLoadStatus('Pallet guardado en el nivel '+(rackSlots.indexOf(slot)+1)+'. Retrocedé para sacar las horquillas.');
+      }else{
+        carried.pallet.position.y=0;carried.pallet.rotation.set(0,heading,0);
+        showLoadStatus('Pallet apoyado en el piso.');
+      }
+      carried=null;alignRack.disabled=true;
+    }
+  }
+  if(practice && carried && !fall && Math.cos(heading-Math.PI)>.98){
+    const world=carried.pallet.getWorldPosition(new THREE.Vector3());
+    const slot=rackSlots[Number(rackLevel.value)];
+    if(Math.abs(world.x-slot.x)<.18 && Math.abs(world.z-slot.z)<.17 && world.y>slot.y
+      && world.y<slot.y+.24 && !lower){
+      showLoadStatus('Pallet en posición. Bajalo con E para apoyarlo.');
+    }
   }
 }
 document.querySelector('#camera').onclick=()=>setView(practice);
