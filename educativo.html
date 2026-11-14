@@ -4,8 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hyster J1.5XNT · Diorama educativo</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#e7e2d6;color:#222925;font:16px system-ui,sans-serif}main{width:min(1100px,95%);margin:28px auto}h1{font-size:clamp(2rem,5vw,3.4rem);margin:0 0 12px;letter-spacing:-.07em}#stage{position:relative;aspect-ratio:16/10;min-height:310px;background:#f7f2e6;border:1px solid #878578;overflow:hidden;border-radius:12px}canvas{display:block;width:100%;height:100%;image-rendering:pixelated;touch-action:none}.controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px}button{background:#f7f2e6;border:1px solid #878578;color:inherit;padding:8px 14px;border-radius:6px;font:inherit;cursor:pointer}input{flex:1;min-width:120px;accent-color:#365748}#step{font-weight:650;margin:12px 0 3px}small{color:#3e4942}#message{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;pointer-events:none}#message[hidden]{display:none}
-main{width:min(1220px,95%)}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(265px,330px);gap:16px}aside{background:#f7f2e6;border-radius:12px;padding:16px;border:1px solid #878578}aside h2{margin:0 0 8px}select{width:100%;font:inherit;padding:8px}fieldset{border:0;padding:0;margin:12px 0}legend{font-weight:700}button[data-action]{touch-action:none}#stage{aspect-ratio:4/3}header p{margin:0 0 16px}@media(max-width:800px){.layout{grid-template-columns:1fr}#stage{aspect-ratio:16/11}}
+*{box-sizing:border-box}body{margin:0;background:#f3f2ec;color:#302f29;font:15px system-ui,sans-serif}main{width:min(1536px,100%);margin:auto;padding:clamp(16px,3vw,42px)}header{margin-bottom:16px}h1{font-size:clamp(1.8rem,4vw,3rem);letter-spacing:-.045em;margin:0 0 6px}header p{margin:0;color:#5b5a50}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(285px,335px);align-items:center;gap:clamp(16px,4vw,60px)}#stage{position:relative;aspect-ratio:4/3;min-height:320px;overflow:hidden}canvas{display:block;width:100%;height:100%;touch-action:none}.controls{display:flex;flex-wrap:wrap;gap:8px}button,select{background:#faf9f5;border:1px solid #d9d7ca;color:inherit;padding:8px 11px;border-radius:9px;font:inherit}button{cursor:pointer}button[data-action]{touch-action:none;margin:2px 0}button[data-action]:active{background:#302f29;color:#fff}select{width:100%;margin-top:6px}aside{background:#faf9f5;border:1px solid #dedcd0;border-radius:20px;padding:20px;box-shadow:0 10px 25px #38352b08}aside h2{font-size:1rem;margin:0 0 8px}fieldset{border:0;padding:0;margin:0 0 12px}legend{font-weight:650;margin-bottom:5px}small{color:#615f55}#description{min-height:3em;line-height:1.45}#message{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}#message[hidden]{display:none}@media(max-width:880px){.layout{grid-template-columns:1fr}#stage{aspect-ratio:16/11;min-height:280px}}
 </style>
 <main>
 <header><h1>Hyster J1.5XNT</h1><p>Maqueta educativa de un forklift eléctrico de tres ruedas y 1,5 t de capacidad nominal.</p></header>
@@ -130,9 +129,11 @@ function createDioramaOrbit(camera, canvas, {
 }
 const stage = document.querySelector('#stage');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#f7f2e6');
-const renderer = new THREE.WebGLRenderer({antialias:false});
-renderer.setPixelRatio(1);
+scene.background = new THREE.Color('#f3f2ec');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 stage.prepend(renderer.domElement);
 renderer.domElement.setAttribute('aria-label','Maqueta 3D del depósito');
 const camera = new THREE.OrthographicCamera(-8,8,5,-5,.1,100);
@@ -145,6 +146,10 @@ orbit.controls.maxZoom = 2.5;
 scene.add(new THREE.HemisphereLight('#fff4db','#849489',2.05));
 const sun = new THREE.DirectionalLight('#fff2d8',2.15);
 sun.position.set(-4,9,6);
+sun.castShadow=true;
+sun.shadow.mapSize.set(1024,1024);
+Object.assign(sun.shadow.camera,{left:-8,right:8,top:8,bottom:-8,far:28});
+sun.shadow.normalBias=.035;
 scene.add(sun);
 const materials = new Map();
 function material(color) {
@@ -154,15 +159,14 @@ function material(color) {
 function box(parent,x,y,z,w,h,d,color) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material(color));
   mesh.position.set(x,y,z);
+  mesh.castShadow=true;
   parent.add(mesh);
   return mesh;
 }
 const dark='#26373a', yellow='#efbf39';
-box(scene,0,-.13,0,9,.25,9,'#85938b');
-for(let i=-4;i<=4;i++){
-  box(scene,i,.001,0,.014,.012,8.9,'#707f76');
-  box(scene,0,.001,i,8.9,.012,.014,'#707f76');
-}
+const platform=box(scene,0,-.11,0,8.8,.21,8.8,'#ede3bf');
+platform.castShadow=false;
+platform.receiveShadow=true;
 const truck=new THREE.Group();scene.add(truck);
 const parts=new Map(), targets=[];
 function group(id,label,description,parent=truck){
@@ -278,7 +282,7 @@ new ResizeObserver(()=>{
   const w=stage.clientWidth,h=stage.clientHeight,aspect=w/h;
   const half=Math.max(3.6,4.4/aspect);
   Object.assign(camera,{left:-half*aspect,right:half*aspect,top:half,bottom:-half});
-  camera.updateProjectionMatrix();renderer.setSize(Math.round(w*.7),Math.round(h*.7),false);
+  camera.updateProjectionMatrix();renderer.setSize(w,h,false);
 }).observe(stage);
 advance(0,new Set());
 for(const button of document.querySelectorAll('[data-action]'))button.disabled=false;
