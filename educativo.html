@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hyster J1.5XNT · Diorama educativo</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#e7e2d6;color:#222925;font:16px system-ui,sans-serif}main{width:min(1100px,95%);margin:28px auto}h1{font-size:clamp(2rem,5vw,3.4rem);margin:0 0 12px;letter-spacing:-.07em}#stage{position:relative;aspect-ratio:16/10;min-height:310px;background:#f7f2e6;border:1px solid #878578;overflow:hidden;border-radius:12px}canvas{display:block;width:100%;height:100%;image-rendering:pixelated;touch-action:none}.controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px}button{background:#f7f2e6;border:1px solid #878578;color:inherit;padding:8px 14px;border-radius:6px;font:inherit;cursor:pointer}input{flex:1;min-width:120px;accent-color:#365748}#step{font-weight:650;margin:12px 0 3px}small{color:#3e4942}#message{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;pointer-events:none}#message[hidden]{display:none}
+main{width:min(1220px,95%)}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(265px,330px);gap:16px}aside{background:#f7f2e6;border-radius:12px;padding:16px;border:1px solid #878578}aside h2{margin:0 0 8px}select{width:100%;font:inherit;padding:8px}fieldset{border:0;padding:0;margin:12px 0}legend{font-weight:700}button[data-action]{touch-action:none}#stage{aspect-ratio:4/3}header p{margin:0 0 16px}@media(max-width:800px){.layout{grid-template-columns:1fr}#stage{aspect-ratio:16/11}}
+</style>
+<main>
+<header><h1>Hyster J1.5XNT</h1><p>Maqueta educativa de un forklift eléctrico de tres ruedas y 1,5 t de capacidad nominal.</p></header>
+<div class="layout">
+<div><div id="stage"><div id="message" role="status">Cargando escena 3D…</div></div>
+<div class="controls"><button id="camera">Restablecer cámara</button><button id="reset">Reiniciar simulación</button></div>
+<p><small>Arrastrá para girar la cámara. Usá la rueda o dos dedos para acercarte.</small></p></div>
+<aside>
+<h2>Controles</h2>
+<fieldset><legend>Conducción</legend>
+<button data-action="forward">Avanzar</button> <button data-action="reverse">Retroceder</button>
+<button data-action="left">Izquierda</button> <button data-action="right">Derecha</button></fieldset>
+<fieldset><legend>Mástil y horquillas</legend>
+<button data-action="raise">Subir</button> <button data-action="lower">Bajar</button>
+<button data-action="back">Inclinar atrás</button> <button data-action="front">Inclinar adelante</button></fieldset>
+<small>Mantené pulsado un botón o usá W/S para mover, A/D para girar, Q/E para subir y bajar, Z/X para inclinar. En esta maqueta podés orientar el vehículo detenido.</small>
+<p id="lift"></p>
+<h2>Partes del forklift</h2>
+<label for="part">Elegí una pieza o tocala en la maqueta</label>
+<select id="part"><option value="">Vehículo completo</option></select>
+<p id="description" aria-live="polite">Seleccioná una pieza para resaltarla y conocer su función.</p>
+<small>Modelo simplificado. <a href="https://www.hyster.com/globalassets/coms/hyster/emea/documents/trucks-literature/3-wheel-electric-forklift-trucks/j1.5-2.0xnt/3990025-j1.5-2.0xnt-k160-tg-rev09-en-online.pdf">Ficha técnica de Hyster</a>.</small>
+</aside></div>
+</main>
+<!--
+MIT License
+
+Copyright (c) 2026 Nehal Kanak / Sloemo01
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-->
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<script type="module">
+const message = document.querySelector('#message');
+try {
+const THREE = await import('three');
+const {OrbitControls} = await import('three/addons/controls/OrbitControls.js');
+// All presets: deterministic hero pose + user orbit; never auto-spin.
+// Adaptado del kit Diorama (MIT).
+
+function createDioramaOrbit(camera, canvas, {
+  target, minDistance = 1, maxDistance = 100,
+  minPolarAngle = 0.08, maxPolarAngle = Math.PI - 0.08,
+  clickSlop = 5, onSelect = () => {}, onChange = () => {},
+} = {}) {
+  const controls = new OrbitControls(camera, canvas);
+  if (target) controls.target.copy(target);
+  controls.enablePan = false;
+  controls.autoRotate = false;
+  // No damping tail: a drag must not move the camera after QA resets it.
+  controls.enableDamping = false;
+  Object.assign(controls, { minDistance, maxDistance, minPolarAngle, maxPolarAngle });
+  controls.update();
+  const heroPosition = camera.position.clone(), heroTarget = controls.target.clone();
+  const heroZoom = camera.zoom;
+  const pointers = new Map();
+  let gesture = false;
+  function down(e) {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, moved: false });
+    if (pointers.size > 1) { gesture = true; for (const p of pointers.values()) p.moved = true; }
+  }
+  function move(e) {
+    const p = pointers.get(e.pointerId);
+    if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > clickSlop) p.moved = true;
+  }
+  function up(e) {
+    const p = pointers.get(e.pointerId);
+    pointers.delete(e.pointerId);
+    if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > clickSlop) p.moved = true;
+    if (p && !p.moved && !gesture && (e.button === 0 || e.pointerType === 'touch')) onSelect(e);
+    if (!pointers.size) gesture = false;
+  }
+  function cancel(e) { pointers.delete(e.pointerId); if (!pointers.size) gesture = false; }
+  function reset() {
+    pointers.clear(); gesture = false;
+    camera.position.copy(heroPosition); camera.zoom = heroZoom;
+    controls.target.copy(heroTarget); camera.updateProjectionMatrix(); controls.update();
+    onChange();
+  }
+  function key(e) {
+    if (e.target !== canvas) return;
+    if (e.key.toLowerCase() === 'r') { e.preventDefault(); reset(); return; }
+    const delta = { ArrowLeft: [-0.12, 0], ArrowRight: [0.12, 0], ArrowUp: [0, -0.12], ArrowDown: [0, 0.12] }[e.key];
+    if (!delta) return;
+    e.preventDefault();
+    const offset = camera.position.clone().sub(controls.target);
+    const r = offset.length(), theta = Math.atan2(offset.x, offset.z) + delta[0];
+    const phi = Math.max(minPolarAngle, Math.min(maxPolarAngle, Math.acos(offset.y / r) + delta[1]));
+    offset.set(r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.cos(theta));
+    camera.position.copy(controls.target).add(offset); controls.update(); onChange();
+  }
+  const oldTabIndex = canvas.getAttribute('tabindex');
+  if (oldTabIndex === null) canvas.tabIndex = 0;
+  const listeners = [['pointerdown', down], ['pointermove', move], ['pointerup', up], ['pointercancel', cancel], ['keydown', key]];
+  // Capture movement before OrbitControls or app bubbling handlers consume it.
+  for (const [name, fn] of listeners) canvas.addEventListener(name, fn, true);
+  controls.addEventListener('change', onChange);
+  return { controls, reset, heroPosition, heroTarget,
+    dispose() {
+      for (const [name, fn] of listeners) canvas.removeEventListener(name, fn, true);
+      controls.removeEventListener('change', onChange); controls.dispose(); pointers.clear();
+      if (oldTabIndex === null) canvas.removeAttribute('tabindex');
+    },
+  };
+}
+const stage = document.querySelector('#stage');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#f7f2e6');
+const renderer = new THREE.WebGLRenderer({antialias:false});
+renderer.setPixelRatio(1);
+stage.prepend(renderer.domElement);
+renderer.domElement.setAttribute('aria-label','Maqueta 3D del depósito');
+const camera = new THREE.OrthographicCamera(-8,8,5,-5,.1,100);
+camera.position.set(5,4,-7);
+const orbit = createDioramaOrbit(camera,renderer.domElement,{
+  target:new THREE.Vector3(0,.95,0), minPolarAngle:.2, maxPolarAngle:1.48, onSelect:inspect
+});
+orbit.controls.minZoom = .65;
+orbit.controls.maxZoom = 2.5;
+scene.add(new THREE.HemisphereLight('#fff4db','#849489',2.05));
+const sun = new THREE.DirectionalLight('#fff2d8',2.15);
+sun.position.set(-4,9,6);
+scene.add(sun);
+const materials = new Map();
+function material(color) {
+  if (!materials.has(color)) materials.set(color,new THREE.MeshLambertMaterial({color}));
+  return materials.get(color);
+}
+function box(parent,x,y,z,w,h,d,color) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material(color));
+  mesh.position.set(x,y,z);
+  parent.add(mesh);
+  return mesh;
+}
+const dark='#26373a', yellow='#efbf39';
+box(scene,0,-.13,0,9,.25,9,'#85938b');
+for(let i=-4;i<=4;i++){
+  box(scene,i,.001,0,.014,.012,8.9,'#707f76');
+  box(scene,0,.001,i,8.9,.012,.014,'#707f76');
+}
+const truck=new THREE.Group();scene.add(truck);
+const parts=new Map(), targets=[];
+function group(id,label,description,parent=truck){
+  const root=new THREE.Group(); parent.add(root);
+  parts.set(id,{label,description,root});
+  return root;
+}
+const chassis=group('chassis','Chasis','Es la estructura que une los conjuntos y soporta el mástil, los ejes y la batería.');
+box(chassis,0,.36,.06,1.12,.38,1.76,yellow);
+const weight=group('weight','Contrapeso','La masa trasera compensa el momento que genera la carga delante del eje delantero.');
+box(weight,0,.56,.79,1.04,.45,.48,'#c99624');
+const battery=group('battery','Batería de tracción','Alimenta los motores y la bomba hidráulica. La maqueta muestra la batería expuesta bajo el asiento.');
+box(battery,0,.60,.20,.76,.22,.62,'#557d7c');
+for(const x of [-.21,.21]) box(battery,x,.73,.42,.08,.045,.085,'#e49450');
+const seat=group('seat','Puesto del operador','El operador usa el asiento, el volante, los pedales y los mandos del mástil.');
+box(seat,0,.84,.34,.41,.14,.38,dark);
+box(seat,0,1,.51,.41,.32,.10,dark);
+box(seat,0,.86,-.36,.10,.48,.10,dark);
+const wheel=new THREE.Mesh(new THREE.TorusGeometry(.14,.025,8,20),material(dark));wheel.rotation.x=-Math.PI/3;wheel.position.set(0,1.07,-.36);seat.add(wheel);
+const guard=group('guard','Techo protector','La estructura elevada protege el puesto frente a la caída de objetos dentro de los límites para los que fue diseñada.');
+for(const x of [-.49,.49])for(const z of [-.53,.68])box(guard,x,1.24,z,.075,1.22,.084,dark);
+for(const x of [-.49,.49])box(guard,x,1.86,.075,.085,.09,1.3,yellow);
+for(let i=0;i<6;i++)box(guard,0,1.86,-.55+i*.25,1.05,.08,.075,dark);
+function tire(parent,x,y,z,r,w){
+  const mesh=new THREE.Mesh(new THREE.CylinderGeometry(r,r,w,20),material('#252c2b'));
+  mesh.rotation.z=Math.PI/2;mesh.position.set(x,y,z);parent.add(mesh);
+  box(parent,x,y,z,w+.025,r*.9,r*.9,'#607069');
+}
+const drive=group('drive','Ruedas delanteras de tracción','Las ruedas delanteras transmiten el movimiento al piso. El eje delantero queda cerca del mástil.');
+for(const x of [-.59,.59])tire(drive,x,.27,-.59,.268,.21);
+const rear=group('rear','Rueda trasera directriz','La rueda trasera cambia de ángulo para dirigir el forklift. Al girar, la parte trasera describe un arco.');
+rear.position.set(0,.21,.78);tire(rear,0,0,0,.206,.25);
+const tilt=new THREE.Group();tilt.position.set(0,.19,-.79);truck.add(tilt);
+const mast=group('mast','Mástil','Los perfiles verticales guían el carro portahorquillas. El conjunto se inclina hacia adelante o atrás.',tilt);
+for(const x of [-.35,.35])box(mast,x,1.05,0,.1,2.1,.16,dark);
+for(const y of [.23,1.34,2.04])box(mast,0,y,0,.68,.09,.13,dark);
+const hydraulic=group('hydraulic','Cilindro de elevación','La bomba envía aceite a presión al cilindro. Su vástago se extiende y el conjunto de elevación mueve el carro.',tilt);
+box(hydraulic,0,.44,.11,.16,.78,.16,'#506461');
+const rod=box(hydraulic,0,.74,.11,.085,.62,.085,'#bbc5bf');
+const carriage=new THREE.Group();tilt.add(carriage);
+const fork=group('fork','Carro y horquillas','El carro se desplaza por el mástil. Las dos horquillas sostienen el pallet desde abajo.',carriage);
+box(fork,0,.13,-.13,.83,.27,.085,'#486363');
+for(const x of [-.23,.23]){
+  box(fork,x,.035,-.66,.115,.069,1.02,dark);
+  box(fork,x,.14,-.23,.115,.27,.12,dark);
+}
+const menu=document.querySelector('#part'),description=document.querySelector('#description');
+for(const [id,part] of parts){
+  menu.add(new Option(part.label,id));
+  part.root.traverse(mesh=>{
+    if(mesh.isMesh){mesh.userData.part=id;mesh.material=mesh.material.clone();targets.push(mesh);}
+  });
+}
+function select(id){
+  menu.value=id;
+  description.textContent=parts.get(id)?.description??'Seleccioná una pieza para resaltarla y conocer su función.';
+  for(const mesh of targets){
+    const selected=mesh.userData.part===id;
+    mesh.material.emissive.setHex(selected?0x4a3411:0);
+    mesh.material.transparent=Boolean(id)&&!selected;
+    mesh.material.opacity=id && !selected ? .23 : 1;
+    mesh.material.depthWrite=!id||selected;
+  }
+}
+function inspect(event){
+  const bounds=renderer.domElement.getBoundingClientRect();
+  const coords=new THREE.Vector2((event.clientX-bounds.left)/bounds.width*2-1,1-(event.clientY-bounds.top)/bounds.height*2);
+  const ray=new THREE.Raycaster();ray.setFromCamera(coords,camera);
+  const hit=ray.intersectObjects(targets,false)[0];
+  select(hit?.object.userData.part??'');
+}
+menu.onchange=()=>select(menu.value);
+const keys={w:'forward',s:'reverse',a:'left',d:'right',q:'raise',e:'lower',z:'back',x:'front'};
+const held=new Set(), pointers=new Map();
+window.addEventListener('keydown',event=>{
+  if(event.ctrlKey||event.metaKey||event.altKey||event.target.closest('select, input, textarea'))return;
+  const action=keys[event.key.toLowerCase()];
+  if(action){event.preventDefault();held.add(action);}
+});
+window.addEventListener('keyup',event=>held.delete(keys[event.key.toLowerCase()]));
+window.addEventListener('blur',()=>{held.clear();pointers.clear();});
+for(const button of document.querySelectorAll('[data-action]')){
+  button.disabled=true;
+  button.onpointerdown=event=>{button.setPointerCapture(event.pointerId);pointers.set(event.pointerId,button.dataset.action);};
+  button.onlostpointercapture=event=>pointers.delete(event.pointerId);
+  button.onpointerup=button.onpointercancel=button.onlostpointercapture;
+  button.onclick=event=>{if(event.detail===0)advance(.14,new Set([button.dataset.action]));};
+}
+let height=0, lean=0, heading=0, last=performance.now();
+const lift=document.querySelector('#lift');
+const clamp=THREE.MathUtils.clamp;
+function advance(dt,actions){
+  const axis=(positive,negative)=>Number(actions.has(positive))-Number(actions.has(negative));
+  const turn=axis('left','right'), distance=axis('forward','reverse')*dt*1.7;
+  heading+=turn*dt*1.55;
+  truck.rotation.y=heading;
+  rear.rotation.y=turn*.62;
+  truck.position.x=clamp(truck.position.x-Math.sin(heading)*distance,-3.1,3.1);
+  truck.position.z=clamp(truck.position.z-Math.cos(heading)*distance,-3.1,3.1);
+  lean=clamp(lean+axis('front','back')*dt*.33,-.16,.13);
+  height=clamp(height+axis('raise','lower')*dt*.7,0,1.5);
+  tilt.rotation.x=-lean;
+  carriage.position.y=height;
+  rod.position.y=.74+height*.5;
+  rod.scale.y=1+height*.7;
+  lift.textContent='Elevación en la maqueta · '+Math.round(height/1.5*100)+' %';
+}
+document.querySelector('#camera').onclick=orbit.reset;
+document.querySelector('#reset').onclick=()=>{
+  height=lean=heading=0;truck.position.set(0,0,0);advance(0,new Set());select('');orbit.reset();
+};
+new ResizeObserver(()=>{
+  const w=stage.clientWidth,h=stage.clientHeight,aspect=w/h;
+  const half=Math.max(3.6,4.4/aspect);
+  Object.assign(camera,{left:-half*aspect,right:half*aspect,top:half,bottom:-half});
+  camera.updateProjectionMatrix();renderer.setSize(Math.round(w*.7),Math.round(h*.7),false);
+}).observe(stage);
+advance(0,new Set());
+for(const button of document.querySelectorAll('[data-action]'))button.disabled=false;
+message.hidden=true;
+renderer.setAnimationLoop(now=>{
+  const dt=clamp((now-last)/1000,0,.05);last=now;
+  advance(dt,new Set([...held,...pointers.values()]));
+  renderer.render(scene,camera);
+});
+} catch(error) {
+  console.error(error);
+  message.textContent='No se pudo cargar la escena 3D. Verificá la conexión a internet y recargá la página.';
+}
+</script>
+</html>
