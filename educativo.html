@@ -4,7 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hyster J1.5XNT · Diorama educativo</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#f3f2ec;color:#302f29;font:15px system-ui,sans-serif}main{width:min(1536px,100%);margin:auto;padding:clamp(16px,3vw,42px)}header{margin-bottom:16px}h1{font-size:clamp(1.8rem,4vw,3rem);letter-spacing:-.045em;margin:0 0 6px}header p{margin:0;color:#5b5a50}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(285px,335px);align-items:center;gap:clamp(16px,4vw,60px)}#stage{position:relative;aspect-ratio:4/3;min-height:320px;overflow:hidden}canvas{display:block;width:100%;height:100%;touch-action:none}.controls{display:flex;flex-wrap:wrap;gap:8px}button,select{background:#faf9f5;border:1px solid #d9d7ca;color:inherit;padding:8px 11px;border-radius:9px;font:inherit}button{cursor:pointer}button[data-action]{touch-action:none;margin:2px 0}button[data-action]:active{background:#302f29;color:#fff}select{width:100%;margin-top:6px}aside{background:#faf9f5;border:1px solid #dedcd0;border-radius:20px;padding:20px;box-shadow:0 10px 25px #38352b08}aside h2{font-size:1rem;margin:0 0 8px}fieldset{border:0;padding:0;margin:0 0 12px}legend{font-weight:650;margin-bottom:5px}small{color:#615f55}#description{min-height:3em;line-height:1.45}#message{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}#message[hidden]{display:none}@media(max-width:880px){.layout{grid-template-columns:1fr}#stage{aspect-ratio:16/11;min-height:280px}}
+*{box-sizing:border-box}body{margin:0;background:#f3f2ec;color:#302f29;font:15px system-ui,sans-serif}main{width:min(1536px,100%);margin:auto;padding:clamp(16px,3vw,42px)}header{margin-bottom:16px}h1{font-size:clamp(1.8rem,4vw,3rem);letter-spacing:-.045em;margin:0 0 6px}header p{margin:0;color:#5b5a50}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(285px,335px);align-items:center;gap:clamp(16px,4vw,60px)}#stage{position:relative;aspect-ratio:4/3;min-height:320px;overflow:hidden}canvas{display:block;width:100%;height:100%;touch-action:none}.controls{display:flex;flex-wrap:wrap;gap:8px}button,select{background:#faf9f5;border:1px solid #d9d7ca;color:inherit;padding:8px 11px;border-radius:9px;font:inherit}button{cursor:pointer}button[data-action]{touch-action:none;margin:2px 0}button[data-action]:active{background:#302f29;color:#fff}select{width:100%;margin-top:6px}aside{background:#faf9f5;border:1px solid #dedcd0;border-radius:20px;padding:20px;box-shadow:0 10px 25px #38352b08}aside h2{font-size:1rem;margin:0 0 8px}fieldset{border:0;padding:0;margin:0 0 12px}legend{font-weight:650;margin-bottom:5px}small{color:#615f55}#description{min-height:3em;line-height:1.45}#message{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}#message[hidden]{display:none}@media(max-width:740px){.layout{grid-template-columns:1fr}#stage{aspect-ratio:16/11;min-height:280px}}
 </style>
 <main>
 <header><h1>Hyster J1.5XNT</h1><p>Maqueta educativa de un forklift eléctrico de tres ruedas y 1,5 t de capacidad nominal.</p></header>
@@ -164,7 +164,7 @@ function box(parent,x,y,z,w,h,d,color) {
   return mesh;
 }
 const dark='#26373a', yellow='#efbf39';
-const platform=box(scene,0,-.11,0,8.8,.21,8.8,'#ede3bf');
+const platform=box(scene,0,-.11,0,5.8,.21,5.8,'#ede3bf');
 platform.castShadow=false;
 platform.receiveShadow=true;
 const truck=new THREE.Group();scene.add(truck);
@@ -264,8 +264,8 @@ function advance(dt,actions){
   heading+=turn*dt*1.55;
   truck.rotation.y=heading;
   rear.rotation.y=turn*.62;
-  truck.position.x=clamp(truck.position.x-Math.sin(heading)*distance,-3.1,3.1);
-  truck.position.z=clamp(truck.position.z-Math.cos(heading)*distance,-3.1,3.1);
+  truck.position.x=clamp(truck.position.x-Math.sin(heading)*distance,-1.62,1.62);
+  truck.position.z=clamp(truck.position.z-Math.cos(heading)*distance,-1.62,1.62);
   lean=clamp(lean+axis('front','back')*dt*.33,-.16,.13);
   height=clamp(height+axis('raise','lower')*dt*.7,0,1.5);
   tilt.rotation.x=-lean;
@@ -280,7 +280,7 @@ document.querySelector('#reset').onclick=()=>{
 };
 new ResizeObserver(()=>{
   const w=stage.clientWidth,h=stage.clientHeight,aspect=w/h;
-  const half=Math.max(3.6,4.4/aspect);
+  const half=Math.max(2.5,3.55/aspect);
   Object.assign(camera,{left:-half*aspect,right:half*aspect,top:half,bottom:-half});
   camera.updateProjectionMatrix();renderer.setSize(w,h,false);
 }).observe(stage);
