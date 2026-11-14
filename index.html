@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Putaway · Diorama de depósito</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#e7e2d6;color:#222925;font:16px system-ui,sans-serif}main{width:min(1100px,95%);margin:28px auto}h1{font-size:clamp(2rem,5vw,3.4rem);margin:0 0 12px;letter-spacing:-.07em}#stage{position:relative;aspect-ratio:16/10;min-height:310px;background:#f7f2e6;border:1px solid #878578;overflow:hidden;border-radius:12px}canvas{display:block;width:100%;height:100%;image-rendering:pixelated;touch-action:none}.controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px}button{background:#f7f2e6;border:1px solid #878578;color:inherit;padding:8px 14px;border-radius:6px;font:inherit;cursor:pointer}input{flex:1;min-width:120px;accent-color:#365748}#step{font-weight:650;margin:12px 0 3px}small{color:#3e4942}#message{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;pointer-events:none}#message[hidden]{display:none}
+</style>
+<main>
+<h1>Putaway en el depósito</h1>
+<div id="stage"><div id="message" role="status">Cargando escena 3D…</div></div>
+<div class="controls">
+<button id="play" type="button" disabled>Pausa</button>
+<button id="reset" type="button" disabled>Restablecer cámara</button>
+<input id="seek" aria-label="Posición de la animación" type="range" min="0" max="18" step="0.01" value="0" disabled>
+</div>
+<p id="step"></p>
+<small>Arrastrá para girar la cámara. Usá la rueda o dos dedos para acercarte.</small>
+</main>
+<!--
+MIT License
+
+Copyright (c) 2026 Nehal Kanak / Sloemo01
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-->
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+<script type="module">
+const message = document.querySelector('#message');
+try {
+const THREE = await import('three');
+const {OrbitControls} = await import('three/addons/controls/OrbitControls.js');
+// All presets: deterministic hero pose + user orbit; never auto-spin.
+// Adaptado del kit Diorama (MIT).
+
+function createDioramaOrbit(camera, canvas, {
+  target, minDistance = 1, maxDistance = 100,
+  minPolarAngle = 0.08, maxPolarAngle = Math.PI - 0.08,
+  clickSlop = 5, onSelect = () => {}, onChange = () => {},
+} = {}) {
+  const controls = new OrbitControls(camera, canvas);
+  if (target) controls.target.copy(target);
+  controls.enablePan = false;
+  controls.autoRotate = false;
+  // No damping tail: a drag must not move the camera after QA resets it.
+  controls.enableDamping = false;
+  Object.assign(controls, { minDistance, maxDistance, minPolarAngle, maxPolarAngle });
+  controls.update();
+  const heroPosition = camera.position.clone(), heroTarget = controls.target.clone();
+  const heroZoom = camera.zoom;
+  const pointers = new Map();
+  let gesture = false;
+  function down(e) {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, moved: false });
+    if (pointers.size > 1) { gesture = true; for (const p of pointers.values()) p.moved = true; }
+  }
+  function move(e) {
+    const p = pointers.get(e.pointerId);
+    if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > clickSlop) p.moved = true;
+  }
+  function up(e) {
+    const p = pointers.get(e.pointerId);
+    pointers.delete(e.pointerId);
+    if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > clickSlop) p.moved = true;
+    if (p && !p.moved && !gesture && (e.button === 0 || e.pointerType === 'touch')) onSelect(e);
+    if (!pointers.size) gesture = false;
+  }
+  function cancel(e) { pointers.delete(e.pointerId); if (!pointers.size) gesture = false; }
+  function reset() {
+    pointers.clear(); gesture = false;
+    camera.position.copy(heroPosition); camera.zoom = heroZoom;
+    controls.target.copy(heroTarget); camera.updateProjectionMatrix(); controls.update();
+    onChange();
+  }
+  function key(e) {
+    if (e.target !== canvas) return;
+    if (e.key.toLowerCase() === 'r') { e.preventDefault(); reset(); return; }
+    const delta = { ArrowLeft: [-0.12, 0], ArrowRight: [0.12, 0], ArrowUp: [0, -0.12], ArrowDown: [0, 0.12] }[e.key];
+    if (!delta) return;
+    e.preventDefault();
+    const offset = camera.position.clone().sub(controls.target);
+    const r = offset.length(), theta = Math.atan2(offset.x, offset.z) + delta[0];
+    const phi = Math.max(minPolarAngle, Math.min(maxPolarAngle, Math.acos(offset.y / r) + delta[1]));
+    offset.set(r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.cos(theta));
+    camera.position.copy(controls.target).add(offset); controls.update(); onChange();
+  }
+  const oldTabIndex = canvas.getAttribute('tabindex');
+  if (oldTabIndex === null) canvas.tabIndex = 0;
+  const listeners = [['pointerdown', down], ['pointermove', move], ['pointerup', up], ['pointercancel', cancel], ['keydown', key]];
+  // Capture movement before OrbitControls or app bubbling handlers consume it.
+  for (const [name, fn] of listeners) canvas.addEventListener(name, fn, true);
+  controls.addEventListener('change', onChange);
+  return { controls, reset, heroPosition, heroTarget,
+    dispose() {
+      for (const [name, fn] of listeners) canvas.removeEventListener(name, fn, true);
+      controls.removeEventListener('change', onChange); controls.dispose(); pointers.clear();
+      if (oldTabIndex === null) canvas.removeAttribute('tabindex');
+    },
+  };
+}
+const stage = document.querySelector('#stage');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#f7f2e6');
+const renderer = new THREE.WebGLRenderer({antialias:false});
+renderer.setPixelRatio(1);
+stage.prepend(renderer.domElement);
+renderer.domElement.setAttribute('aria-label','Maqueta 3D del depósito');
+const camera = new THREE.OrthographicCamera(-8,8,5,-5,.1,100);
+camera.position.set(12,10,16);
+const orbit = createDioramaOrbit(camera,renderer.domElement,{
+  target:new THREE.Vector3(0,1,0), minPolarAngle:.2, maxPolarAngle:1.48
+});
+orbit.controls.minZoom = .65;
+orbit.controls.maxZoom = 2.5;
+scene.add(new THREE.HemisphereLight('#fff4db','#849489',2.05));
+const sun = new THREE.DirectionalLight('#fff2d8',2.15);
+sun.position.set(-4,9,6);
+scene.add(sun);
+const materials = new Map();
+function material(color) {
+  if (!materials.has(color)) materials.set(color,new THREE.MeshLambertMaterial({color}));
+  return materials.get(color);
+}
+function box(parent,x,y,z,w,h,d,color) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material(color));
+  mesh.position.set(x,y,z);
+  parent.add(mesh);
+  return mesh;
+}
+const dark='#26373a', blue='#294d59', orange='#c66136', yellow='#eab23f', wood='#8a613d';
+box(scene,0,-.32,0,14,.62,9,dark);
+box(scene,0,-.04,0,13.8,.14,8.8,'#85928a');
+for(let x=-6;x<=6;x++) box(scene,x,.036,0,.017,.01,8.7,'#72847b');
+for(let z=-4;z<=4;z++) box(scene,0,.036,z,13.7,.01,.017,'#72847b');
+for(let x=-6;x<=6;x+=.7) box(scene,x,.05,2.1,.35,.02,.075,yellow);
+for(let x=-5.9;x<=6;x+=.46) box(scene,x,.055,4.15,.26,.019,.1,orange);
+function cargo(parent,x,y,z,color='#9d693e') {
+  const group = new THREE.Group(); parent.add(group); group.position.set(x,y,z);
+  for(let i=-1;i<=1;i++) box(group,i*.40,.06,0,.15,.12,1.18,wood);
+  box(group,0,.15,0,.96,.065,1.23,'#b18a59');
+  for(let row=0;row<2;row++) for(let col=0;col<2;col++) {
+    const dx=(col-.5)*.46, dz=(row-.5)*.55;
+    box(group,dx,.43,dz,.44,.49,.53,color);
+    box(group,dx,.679,dz,.085,.01,.51,'#c19863');
+    box(group,dx,.44,dz+.268,.13,.09,.01,'#d4c19e');
+  }
+  return group;
+}
+for(const x of [-3.1,-1.1,.9,2.9,4.9,6.6]) {
+  for(const z of [-3.92,-2.35]) box(scene,x,1.7,z,.13,3.38,.13,blue);
+  for(const y of [.35,1.65,2.97]) box(scene,x,y,-3.12,.125,.105,1.61,blue);
+}
+for(const y of [.36,1.66,2.98]) {
+  for(const z of [-3.92,-2.35]) box(scene,1.75,y,z,9.83,.13,.13,orange);
+  for(const x of [-2.1,-.1,1.9,3.9,5.75]) box(scene,x,y+.065,-3.14,1.83,.046,1.43,'#73776c');
+}
+for(const [x,y,color] of [[-2.1,.45,'#858354'],[-.1,1.75,'#a77b50'],[1.9,3.07,'#777c5b'],[3.9,.45,'#8e8064'],[5.75,1.75,'#978252']]) cargo(scene,x,y,-3.08,color);
+for(let i=0;i<3;i++) cargo(scene,-5.55,.03,-2.9+i*1.5,['#827e54','#9a7746','#83755d'][i]);
+const truck = new THREE.Group(); scene.add(truck);
+const truckShadow = new THREE.Mesh(new THREE.CircleGeometry(1,24),new THREE.MeshBasicMaterial({color:'#24342d',transparent:true,opacity:.22,depthWrite:false}));
+truckShadow.rotation.x=-Math.PI/2;
+truckShadow.scale.set(.86,1.28,1);
+truckShadow.position.y=.047;
+truck.add(truckShadow);
+box(truck,0,.4,.14,1.14,.51,1.69,yellow);
+box(truck,0,.65,.57,1.03,.45,.68,'#cf8f21');
+box(truck,0,.58,-.05,.84,.15,.65,dark);
+for(const x of [-.48,.48]) for(const z of [-.55,.66]) box(truck,x,1.17,z,.085,1.22,.085,dark);
+box(truck,0,1.8,.07,1.09,.12,1.53,yellow);
+for(let i=0;i<5;i++) box(truck,0,1.87,-.49+i*.27,.94,.03,.06,dark);
+box(truck,0,.78,.32,.36,.16,.32,dark);
+box(truck,0,.96,.46,.36,.34,.12,dark);
+box(truck,0,.99,-.36,.43,.11,.16,dark);
+box(truck,0,1.02,.13,.31,.34,.27,'#3a6269');
+box(truck,0,1.26,.11,.22,.23,.22,'#b58057');
+box(truck,0,1.40,.10,.28,.12,.27,'#eaa72d');
+box(truck,0,1.49,.76,.36,.11,.045,'#ed8a56');
+box(truck,.35,1.93,.44,.12,.17,.12,'#f09e37');
+for(const z of [-.59,.63]) for(const x of [-.61,.61]) {
+  const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.275,.275,.22,12),material('#252b29'));
+  wheel.rotation.z=Math.PI/2; wheel.position.set(x,.3,z); truck.add(wheel);
+  box(truck,x*1.195,.3,z,.025,.22,.22,'#55605a');
+}
+for(const x of [-.37,.37]) box(truck,x,1.42,-.85,.105,2.79,.13,dark);
+const carriage=new THREE.Group(); truck.add(carriage);
+box(carriage,0,.22,-.93,.96,.38,.1,blue);
+for(const x of [-.23,.23]) box(carriage,x,.047,-1.6,.115,.082,1.36,dark);
+const load=cargo(scene,1.9,.04,-.22);
+const timeline=[
+  [0,3.6,0,'Se acerca al pallet'],
+  [3,1.52,0,'Toma el pallet'],
+  [4.5,1.52,.24,'Eleva la carga'],
+  [6,1.52,1.71,'Eleva la carga'],
+  [9,-1.34,1.71,'Coloca el pallet en el rack'],
+  [10,-1.34,1.66,'Apoya el pallet'],
+  [11,-1.34,1.66,'Retira las horquillas'],
+  [14,1.52,1.66,'Retira las horquillas'],
+  [16,3.6,0,'Vuelve al pasillo'],
+  [18,3.6,0,'Pallet en su ubicación']
+];
+const seek=document.querySelector('#seek'), step=document.querySelector('#step');
+const play=document.querySelector('#play'), reset=document.querySelector('#reset');
+function draw(t) {
+  const next=timeline.findIndex(row=>row[0]>t);
+  const a=timeline[next<0?timeline.length-1:next-1];
+  const b=timeline[next<0?timeline.length-1:next];
+  const fraction=a===b?0:(t-a[0])/(b[0]-a[0]);
+  const ease=fraction*fraction*(3-2*fraction);
+  truck.position.set(1.9,0,THREE.MathUtils.lerp(a[1],b[1],ease));
+  carriage.position.y=THREE.MathUtils.lerp(a[2],b[2],ease);
+  if(t<3) load.position.set(1.9,.035,-.22);
+  else if(t<10) load.position.set(1.9,carriage.position.y+.035+Math.min(.055,carriage.position.y),truck.position.z-1.74);
+  else load.position.set(1.9,1.75,-3.08);
+  step.textContent=a[3];
+  seek.value=t;
+  renderer.render(scene,camera);
+}
+function resize() {
+  const w=stage.clientWidth,h=stage.clientHeight,aspect=w/h;
+  const half=Math.max(4.9,7.6/aspect);
+  Object.assign(camera,{left:-half*aspect,right:half*aspect,top:half,bottom:-half});
+  camera.updateProjectionMatrix();
+  renderer.setSize(Math.round(w*.51),Math.round(h*.51),false);
+}
+const duration=18;
+let time=0,last=performance.now();
+let playing=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+function setPlaying(value) { playing=value;play.textContent=playing?'Pausa':'Reproducir'; }
+setPlaying(playing);
+play.onclick=()=>{if(!playing&&time===duration) time=0;setPlaying(!playing);};
+reset.onclick=orbit.reset;
+seek.oninput=()=>{time=Number(seek.value);setPlaying(false);draw(time);};
+new ResizeObserver(()=>{resize();draw(time);}).observe(stage);
+resize();
+draw(0);
+for(const control of [play,reset,seek]) control.disabled=false;
+message.hidden=true;
+window.__diorama={scene,camera,renderer,freeze(t){time=THREE.MathUtils.clamp(t,0,duration);setPlaying(false);draw(time);}};
+window.__dioramaReady=true;
+renderer.setAnimationLoop(now=>{
+  const delta=Math.min(.05,(now-last)/1000); last=now;
+  if(playing){time=Math.min(duration,time+Math.max(0,delta));if(time===duration)setPlaying(false);}
+  draw(time);
+});
+} catch(error) {
+  console.error(error);
+  message.textContent='No se pudo cargar la escena 3D. Verificá la conexión a internet y recargá la página.';
+}
+</script>
+</html>
