@@ -10,7 +10,7 @@
 <header><h1>Hyster J1.5XNT</h1><p>Maqueta educativa de un forklift eléctrico de tres ruedas y 1,5 t de capacidad nominal.</p></header>
 <div class="layout">
 <div><div id="stage"><div id="message" role="status">Cargando escena 3D…</div></div>
-<div class="controls"><button id="camera">Restablecer cámara</button><button id="reset">Reiniciar simulación</button></div>
+<div class="controls"><button id="view" type="button" aria-pressed="false">Ver pallet y rack</button><button id="camera">Restablecer cámara</button><button id="reset">Reiniciar simulación</button></div>
 <p><small>Arrastrá para girar la cámara. Usá la rueda o dos dedos para acercarte.</small></p></div>
 <aside>
 <h2>Controles</h2>
@@ -26,7 +26,7 @@
 <label for="part">Elegí una pieza o tocala en la maqueta</label>
 <select id="part"><option value="">Vehículo completo</option></select>
 <p id="description" aria-live="polite">Seleccioná una pieza para resaltarla y conocer su función.</p>
-<small>Modelo simplificado. <a href="https://www.hyster.com/globalassets/coms/hyster/emea/documents/trucks-literature/3-wheel-electric-forklift-trucks/j1.5-2.0xnt/3990025-j1.5-2.0xnt-k160-tg-rev09-en-online.pdf">Ficha técnica de Hyster</a>.</small>
+<small>Maqueta educativa basada en el J1.5XNT SWB. Los interiores son esquemáticos. <a href="https://www.hyster.com/globalassets/coms/hyster/emea/documents/trucks-literature/3-wheel-electric-forklift-trucks/j1.5-2.0xnt/3990025-j1.5-2.0xnt-k160-tg-rev09-en-online.pdf">Ficha técnica de Hyster</a>.</small>
 </aside></div>
 </main>
 <!--
@@ -58,6 +58,7 @@ SOFTWARE.
 const message = document.querySelector('#message');
 try {
 const THREE = await import('three');
+const {RoundedBoxGeometry}=await import('three/addons/geometries/RoundedBoxGeometry.js');
 const {OrbitControls} = await import('three/addons/controls/OrbitControls.js');
 // All presets: deterministic hero pose + user orbit; never auto-spin.
 // Adaptado del kit Diorama (MIT).
@@ -135,7 +136,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 stage.prepend(renderer.domElement);
-renderer.domElement.setAttribute('aria-label','Maqueta 3D del depósito');
+renderer.domElement.setAttribute('aria-label','Maqueta 3D del Hyster J1.5XNT');
 const camera = new THREE.OrthographicCamera(-8,8,5,-5,.1,100);
 camera.position.set(5,4,-7);
 const orbit = createDioramaOrbit(camera,renderer.domElement,{
@@ -163,8 +164,19 @@ function box(parent,x,y,z,w,h,d,color) {
   parent.add(mesh);
   return mesh;
 }
+function rounded(parent,x,y,z,w,h,d,r,color){
+  const mesh=new THREE.Mesh(new RoundedBoxGeometry(w,h,d,4,r),material(color));
+  mesh.position.set(x,y,z);mesh.castShadow=true;parent.add(mesh);return mesh;
+}
+function cylinder(parent,x,y,z,r,length,color,axis='y'){
+  const mesh=new THREE.Mesh(new THREE.CylinderGeometry(r,r,length,28),material(color));
+  mesh.position.set(x,y,z);
+  if(axis==='x')mesh.rotation.z=Math.PI/2;
+  if(axis==='z')mesh.rotation.x=Math.PI/2;
+  mesh.castShadow=true;parent.add(mesh);return mesh;
+}
 const dark='#26373a', yellow='#efbf39';
-const platform=box(scene,0,-.11,0,5.8,.21,5.8,'#ede3bf');
+const platform=rounded(scene,0,-.10,0,5.8,.20,5.6,.065,'#eee3c3');
 platform.castShadow=false;
 platform.receiveShadow=true;
 const truck=new THREE.Group();scene.add(truck);
@@ -175,17 +187,40 @@ function group(id,label,description,parent=truck){
   return root;
 }
 const chassis=group('chassis','Chasis','Es la estructura que une los conjuntos y soporta el mástil, los ejes y la batería.');
-box(chassis,0,.36,.06,1.12,.38,1.76,yellow);
+rounded(chassis,0,.36,.06,1.08,.34,1.76,.10,yellow);
+for(const x of [-.545,.545]){
+  rounded(chassis,x,.31,.04,.085,.10,.35,.025,dark);
+  for(let i=0;i<5;i++)box(chassis,x,.365,-.095+i*.06,.076,.016,.018,'#73807a');
+}
 const weight=group('weight','Contrapeso','La masa trasera compensa el momento que genera la carga delante del eje delantero.');
-box(weight,0,.56,.79,1.04,.45,.48,'#c99624');
+rounded(weight,0,.54,.77,1.04,.44,.63,.17,yellow);
+rounded(weight,0,.66,1.065,.66,.105,.035,.012,dark);
+for(const x of [-.37,.37])rounded(weight,x,.69,1.025,.14,.07,.055,.021,'#a53d27');
+const cover=group('cover','Tapa del compartimiento','Cubre la batería y sostiene el asiento. Elegí Batería para ver el conjunto a través de la tapa.');
+rounded(cover,0,.735,.21,.92,.115,.75,.07,yellow);
+const step=group('pedals','Pedales y piso antideslizante','Los pedales permiten dosificar el movimiento y el frenado. La superficie rugosa ayuda a apoyar los pies.');
+rounded(step,0,.545,-.33,.81,.065,.47,.022,dark);
+for(let i=0;i<6;i++)box(step,0,.582,-.50+i*.065,.75,.012,.017,'#56625d');
+for(const x of [-.09,.16])rounded(step,x,.62,-.49,.115,.057,.105,.015,'#465450').rotation.x=.3;
 const battery=group('battery','Batería de tracción','Alimenta los motores y la bomba hidráulica. La maqueta muestra la batería expuesta bajo el asiento.');
 box(battery,0,.60,.20,.76,.22,.62,'#557d7c');
 for(const x of [-.21,.21]) box(battery,x,.73,.42,.08,.045,.085,'#e49450');
 const seat=group('seat','Puesto del operador','El operador usa el asiento, el volante, los pedales y los mandos del mástil.');
-box(seat,0,.84,.34,.41,.14,.38,dark);
-box(seat,0,1,.51,.41,.32,.10,dark);
-box(seat,0,.86,-.36,.10,.48,.10,dark);
-const wheel=new THREE.Mesh(new THREE.TorusGeometry(.14,.025,8,20),material(dark));wheel.rotation.x=-Math.PI/3;wheel.position.set(0,1.07,-.36);seat.add(wheel);
+rounded(seat,0,.84,.34,.44,.13,.42,.055,dark);
+rounded(seat,0,1.025,.50,.44,.31,.14,.063,dark).rotation.x=.16;
+const steering=group('steering','Volante y columna','El giro del volante se transmite al conjunto directriz trasero.');
+cylinder(steering,0,.86,-.36,.037,.48,dark).rotation.x=.22;
+const dash=group('dashboard','Consola e indicadores','El display informa el estado del vehículo. Los mandos hidráulicos accionan elevación e inclinación.');
+rounded(dash,0,1.00,-.45,.73,.22,.20,.04,dark);
+rounded(dash,.18,1.13,-.43,.13,.018,.09,.008,'#71948e');
+for(const z of [.04,.18]){
+  cylinder(dash,.38,.90,z,.016,.19,'#5b6663').rotation.z=.24;
+  rounded(dash,.355,1.00,z,.057,.05,.055,.018,dark);
+}
+const restraint=group('restraint','Cinturón y anclajes','El cinturón forma parte del sistema de retención del operador.');
+rounded(restraint,-.23,.89,.44,.050,.055,.06,.012,'#832b23');
+box(restraint,.225,.90,.43,.032,.055,.14,'#5b6763');
+const wheel=new THREE.Mesh(new THREE.TorusGeometry(.14,.025,8,20),material(dark));wheel.rotation.x=-Math.PI/3;wheel.position.set(0,1.07,-.36);steering.add(wheel);
 const guard=group('guard','Techo protector','La estructura elevada protege el puesto frente a la caída de objetos dentro de los límites para los que fue diseñada.');
 for(const x of [-.49,.49])for(const z of [-.53,.68])box(guard,x,1.24,z,.075,1.22,.084,dark);
 for(const x of [-.49,.49])box(guard,x,1.86,.075,.085,.09,1.3,yellow);
@@ -193,26 +228,85 @@ for(let i=0;i<6;i++)box(guard,0,1.86,-.55+i*.25,1.05,.08,.075,dark);
 function tire(parent,x,y,z,r,w){
   const mesh=new THREE.Mesh(new THREE.CylinderGeometry(r,r,w,20),material('#252c2b'));
   mesh.rotation.z=Math.PI/2;mesh.position.set(x,y,z);parent.add(mesh);
-  box(parent,x,y,z,w+.025,r*.9,r*.9,'#607069');
+  cylinder(parent,x,y,z,r*.50,w+.025,'#727c78','x');
+  cylinder(parent,x,y,z,r*.22,w+.045,'#414c49','x');
+  for(let i=0;i<5;i++){
+    const a=i*Math.PI*2/5;
+    cylinder(parent,x,y+Math.cos(a)*r*.34,z+Math.sin(a)*r*.34,r*.055,w+.043,'#9da59c','x');
+  }
 }
 const drive=group('drive','Ruedas delanteras de tracción','Las ruedas delanteras transmiten el movimiento al piso. El eje delantero queda cerca del mástil.');
 for(const x of [-.59,.59])tire(drive,x,.27,-.59,.268,.21);
-const rear=group('rear','Rueda trasera directriz','La rueda trasera cambia de ángulo para dirigir el forklift. Al girar, la parte trasera describe un arco.');
-rear.position.set(0,.21,.78);tire(rear,0,0,0,.206,.25);
+const motors=group('motors','Motores eléctricos de tracción','Transforman la energía de la batería en giro para las ruedas delanteras. La ubicación interna se muestra de forma esquemática.');
+for(const x of [-.28,.28])cylinder(motors,x,.25,-.57,.123,.24,'#72887f','x');
+const rear=group('rear','Conjunto directriz trasero','El par de ruedas traseras montadas juntas cambia de ángulo para dirigir el forklift. Al girar, la parte trasera describe un arco.');
+rear.position.set(0,.202,.75);for(const x of [-.097,.097])tire(rear,x,0,0,.201,.115);
 const tilt=new THREE.Group();tilt.position.set(0,.19,-.79);truck.add(tilt);
 const mast=group('mast','Mástil','Los perfiles verticales guían el carro portahorquillas. El conjunto se inclina hacia adelante o atrás.',tilt);
 for(const x of [-.35,.35])box(mast,x,1.05,0,.1,2.1,.16,dark);
 for(const y of [.23,1.34,2.04])box(mast,0,y,0,.68,.09,.13,dark);
 const hydraulic=group('hydraulic','Cilindro de elevación','La bomba envía aceite a presión al cilindro. Su vástago se extiende y el conjunto de elevación mueve el carro.',tilt);
-box(hydraulic,0,.44,.11,.16,.78,.16,'#506461');
-const rod=box(hydraulic,0,.74,.11,.085,.62,.085,'#bbc5bf');
+cylinder(hydraulic,0,.44,.11,.075,.78,'#506461');
+const rod=cylinder(hydraulic,0,.74,.11,.039,.62,'#bbc5bf');
+const pump=group('pump','Bomba y depósito hidráulico','La bomba impulsa aceite hacia los cilindros. El depósito aloja el fluido de retorno.');
+rounded(pump,-.38,.4,-.14,.22,.24,.31,.025,'#537f75');
+cylinder(pump,-.37,.4,-.35,.085,.15,'#738b82','z');
+const tiltCylinder=group('tilt','Cilindros de inclinación','En la maqueta, los cilindros conectan el chasis al mástil. Su carrera inclina el mástil en torno a su pivote.');
+const tiltRods=[];
+for(const x of [-.415,.415]){
+  const barrel=cylinder(tiltCylinder,x,.38,-.34,.037,.25,'#506461','z');
+  const pin=cylinder(tiltCylinder,x,.48,-.60,.019,1,'#aab6ad');
+  tiltRods.push({pin,anchor:barrel.position.clone(),end:new THREE.Vector3(x,.29,.055)});
+}
+const inner=group('inner','Perfiles interiores','Los perfiles telescópicos amplían el recorrido del mástil. Esta maqueta ilustra su extensión junto al carro.',tilt);
+for(const x of [-.27,.27])box(inner,x,1.0,-.032,.055,1.79,.085,'#536561');
+box(inner,0,1.87,-.032,.58,.07,.09,'#536561');
+const chains=group('chains','Cadenas y roldanas','Las cadenas pasan por roldanas y transmiten la elevación al carro.',inner);
+for(const x of [-.18,.18]){
+  cylinder(chains,x,1.81,.025,.055,.06,'#8d9a91','x');
+  for(let i=0;i<24;i++)rounded(chains,x,.30+i*.063,.067,.036,.051,.036,.008,i%2?'#60716c':'#7b8981');
+}
 const carriage=new THREE.Group();tilt.add(carriage);
-const fork=group('fork','Carro y horquillas','El carro se desplaza por el mástil. Las dos horquillas sostienen el pallet desde abajo.',carriage);
-box(fork,0,.13,-.13,.83,.27,.085,'#486363');
+const carriageParts=group('carriage','Carro portahorquillas','Se desplaza por el mástil y lleva las horquillas. Sus guías ayudan a mantener el conjunto alineado.',carriage);
+box(carriageParts,0,.13,-.13,.89,.27,.085,'#486363');
+const fork=group('fork','Horquillas','Las dos horquillas sostienen el pallet desde abajo.',carriage);
 for(const x of [-.23,.23]){
-  box(fork,x,.035,-.66,.115,.069,1.02,dark);
+  rounded(fork,x,.035,-.66,.08,.05,1.00,.012,dark);
   box(fork,x,.14,-.23,.115,.27,.12,dark);
 }
+const rack=group('rack','Rack de almacenamiento','Los largueros soportan los pallets y descargan el peso en los marcos laterales.',scene);
+rack.position.set(-1.90,0,1.15);
+for(const x of [-.64,.64]){
+  for(const z of [-.36,.36]){
+    box(rack,x,.91,z,.073,1.82,.073,'#335761');
+    box(rack,x,.024,z,.16,.045,.13,'#658080');
+    for(let i=0;i<14;i++)box(rack,x,.14+i*.108,z-.038,.014,.031,.005,'#1a3439');
+  }
+  for(const y of [.22,.94,1.70])box(rack,x,y,0,.055,.06,.74,'#426774');
+}
+for(const y of [.43,1.29]){
+  for(const z of [-.36,.36])box(rack,0,y,z,1.26,.085,.065,'#cf713e');
+  for(const x of [-.42,0,.42])box(rack,x,y+.042,0,.047,.028,.70,'#667971');
+}
+const pallet=group('pallet','Pallet de madera','Las entradas entre los tacos permiten que las horquillas se introduzcan bajo las tablas.',scene);
+pallet.position.set(.75,0,-1.92);
+for(const z of [-.35,0,.35]){
+  box(pallet,0,.014,z,1.2,.028,.1,'#9b6d46');
+  for(const x of [-.49,0,.49])box(pallet,x,.068,z,.12,.08,.10,'#855a3b');
+  box(pallet,0,.118,z,1.2,.026,.1,'#bc8c5c');
+}
+for(const x of [-.53,-.26,0,.26,.53])box(pallet,x,.144,0,.14,.026,.8,'#c89969');
+const view=document.querySelector('#view');
+let practice=false;
+function setView(value){
+  practice=value;rack.visible=pallet.visible=value;
+  view.setAttribute('aria-pressed',String(value));
+  view.textContent=value?'Volver a inspección':'Ver pallet y rack';
+  platform.visible=true;platform.scale.set(value?1:.64,1,value?1:.64);
+  orbit.reset();
+  camera.zoom=value?1:1.5;camera.updateProjectionMatrix();
+}
+view.onclick=()=>{select('');setView(!practice);};
 const menu=document.querySelector('#part'),description=document.querySelector('#description');
 for(const [id,part] of parts){
   menu.add(new Option(part.label,id));
@@ -221,6 +315,7 @@ for(const [id,part] of parts){
   });
 }
 function select(id){
+  if((id==='rack'||id==='pallet')&&!practice)setView(true);
   menu.value=id;
   description.textContent=parts.get(id)?.description??'Seleccioná una pieza para resaltarla y conocer su función.';
   for(const mesh of targets){
@@ -229,13 +324,14 @@ function select(id){
     mesh.material.transparent=Boolean(id)&&!selected;
     mesh.material.opacity=id && !selected ? .23 : 1;
     mesh.material.depthWrite=!id||selected;
+    mesh.castShadow=!id||selected;
   }
 }
 function inspect(event){
   const bounds=renderer.domElement.getBoundingClientRect();
   const coords=new THREE.Vector2((event.clientX-bounds.left)/bounds.width*2-1,1-(event.clientY-bounds.top)/bounds.height*2);
   const ray=new THREE.Raycaster();ray.setFromCamera(coords,camera);
-  const hit=ray.intersectObjects(targets,false)[0];
+  const hit=ray.intersectObjects(targets.filter(mesh=>practice||!['rack','pallet'].includes(mesh.userData.part)),false)[0];
   select(hit?.object.userData.part??'');
 }
 menu.onchange=()=>select(menu.value);
@@ -270,13 +366,22 @@ function advance(dt,actions){
   height=clamp(height+axis('raise','lower')*dt*.7,0,1.5);
   tilt.rotation.x=-lean;
   carriage.position.y=height;
+  inner.position.y=height*.57;
+  tilt.updateMatrix();
+  for(const {pin,anchor,end} of tiltRods){
+    const tip=end.clone().applyMatrix4(tilt.matrix);
+    const delta=tip.clone().sub(anchor);
+    pin.position.copy(anchor).lerp(tip,.5);
+    pin.scale.y=delta.length();
+    pin.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.normalize());
+  }
   rod.position.y=.74+height*.5;
   rod.scale.y=1+height*.7;
   lift.textContent='Elevación en la maqueta · '+Math.round(height/1.5*100)+' %';
 }
-document.querySelector('#camera').onclick=orbit.reset;
+document.querySelector('#camera').onclick=()=>setView(practice);
 document.querySelector('#reset').onclick=()=>{
-  height=lean=heading=0;truck.position.set(0,0,0);advance(0,new Set());select('');orbit.reset();
+  height=lean=heading=0;truck.position.set(0,0,0);advance(0,new Set());select('');setView(practice);
 };
 new ResizeObserver(()=>{
   const w=stage.clientWidth,h=stage.clientHeight,aspect=w/h;
@@ -284,6 +389,7 @@ new ResizeObserver(()=>{
   Object.assign(camera,{left:-half*aspect,right:half*aspect,top:half,bottom:-half});
   camera.updateProjectionMatrix();renderer.setSize(w,h,false);
 }).observe(stage);
+setView(true);
 advance(0,new Set());
 for(const button of document.querySelectorAll('[data-action]'))button.disabled=false;
 message.hidden=true;
